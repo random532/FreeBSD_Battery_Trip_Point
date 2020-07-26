@@ -608,9 +608,7 @@ static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 		newtp = newtp / 100;
 		
 		printf("oh.. btw: bif.lfcap=%i, bif.lcap=%i, wcap=%i, gra1=%i, gra2=%i, newtp=%i\n", sc->bif.lfcap, sc->bif.lcap, sc->bif.wcap, sc->bif.gra1, sc->bif.gra2, (int) newtp);
-		int sure = (int) newtp;
-		printf("setting:%i\n", sure);
-		as = acpi_SetInteger(h, "_BTP", sure);
+		as = acpi_SetInteger(h, "_BTP", (int) newtp);
     
 		if (ACPI_FAILURE(as))
 			printf( "error setting _BTP\n");
@@ -640,17 +638,16 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 	sc = device_get_softc(dev);
 	h = acpi_get_handle(dev);
 	
-	int warning=0;
+	int warning=5; /* default warning level */
 		
 	if(req->newptr) {
 		/* write request */
 		SYSCTL_IN(req, &warning, sizeof(warning));
 		
-		if(warning < 0 || warning > 100)
-			return (1);
+		if(warning < 1 || warning > 100)
+			warning = 5; 
 			
-		warning = (double) warning /100;
-		warning = warning * sc->bif.lfcap;
+		warning = warning * sc->bif.lfcap /100;
 		device_printf(dev, "setting -->%s to %i\n", oidp->oid_name, warning);
 		
 		if(strncmp(oidp->oid_name, "Low", 3) == 0 )
