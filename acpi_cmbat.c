@@ -541,7 +541,7 @@ acpi_cmbat_init_battery(void *arg)
 
 	if (valid) {
 		/* add cmbat sysctls */
-		cmbat_sysctls(dev);		
+		acpi_cmbat_sysctls(dev);		
 	    break;
 	}
     }
@@ -557,6 +557,8 @@ acpi_cmbat_init_battery(void *arg)
 
 static void acpi_cmbat_sysctls( device_t dev) {
 
+		struct acpi_cmbat_softc *sc = device_get_softc(dev);
+		
 		int battery_unit = device_get_unit(dev);
 		char *unit = malloc(10, M_ACPICMBAT, M_WAITOK);
 		sprintf(unit, "%i", battery_unit);
@@ -565,7 +567,7 @@ static void acpi_cmbat_sysctls( device_t dev) {
 		struct sysctl_oid *cmbat_oid = SYSCTL_ADD_NODE(NULL, SYSCTL_CHILDREN(cmbat_tree), OID_AUTO, unit, CTLFLAG_RW, 0, "unit number");
 
 		if(sc->acpi_btp_exists) {
-			SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Any", CTLTYPE_INT | CTLFLAG_RW, 0, 0, battery_warning_btp_sysctl, "I" ,"battery level warning");
+			SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Any", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_btp_sysctl, "I" ,"battery level warning");
 		}
 		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Low", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"low battery warning");
 		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "CriticallyLow", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"critically low battery warning");
@@ -573,7 +575,7 @@ static void acpi_cmbat_sysctls( device_t dev) {
 		//free(unit);
 }
 
-static int battery_trip_point_sysctl(SYSCTL_HANDLER_ARGS) {
+static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 	
 	device_t dev;	
 	ACPI_HANDLE h;
@@ -623,7 +625,6 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 
 	device_t dev;	
 	ACPI_HANDLE h;
-	ACPI_STATUS as;
 	
 	struct acpi_cmbat_softc *sc;
 	
@@ -639,7 +640,7 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 	sc = device_get_softc(dev);
 	h = acpi_get_handle(dev);
 	
-	int warning;
+	int warning=0;
 		
 	if(req->newptr) {
 		/* write request */
@@ -648,22 +649,23 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 		if(warning < 0 || warning > 100)
 			return (1);
 			
-		warning = (double) warning /100 * sc->bif->lfcap;
-		dev_printf(dev, "setting -->%s to %i\n", oidp->oid_name, warning);
+		warning = (double) warning /100;
+		warning = warning * sc->bif.lfcap;
+		device_printf(dev, "setting -->%s to %i\n", oidp->oid_name, warning);
 		
 		if(strncmp(oidp->oid_name, "Low", 3) == 0 )
-		sc->bif->wcap = warning;
-	else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
-		sc->bif->lcap = warning;
+			sc->bif.wcap = warning;
+		else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
+			sc->bif.lcap = warning;
 	}
 	else /* read request */ {
 		if(strncmp(oidp->oid_name, "Low", 3) == 0 )
-		warning = sc->bif->wcap;
+		warning = sc->bif.wcap;
 		else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
-			warning = sc->bif->lcap;
+			warning = sc->bif.lcap;
 	
-		warning = (double) warning / sc->bif->lfcap *100;
-		SYSCTL_OUT(req, warning, sizeof(warning));
+		warning = (double) warning / sc->bif.lfcap *100;
+		SYSCTL_OUT(req, &warning, sizeof(warning));
 	}
 	return 0;
 }
