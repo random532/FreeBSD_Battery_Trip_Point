@@ -628,13 +628,10 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 	
 	/* find "our" battery */
 	struct sysctl_oid *parent = SYSCTL_PARENT(oidp);
-	if(!parent)
-		return(1);
+	
 	long battery_index = strtol(parent->oid_name, NULL, 0);
 	
 	dev = devclass_get_device( acpi_cmbat_devclass, (int) battery_index);
-	if(!dev)
-		return(1);
 	sc = device_get_softc(dev);
 	h = acpi_get_handle(dev);
 	
@@ -661,7 +658,9 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 		else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
 			warning = sc->bif.lcap;
 	
-		warning = (double) warning / sc->bif.lfcap *100;
+		if(!warning)
+			warning = 5;
+		warning = (double) warning *100 / sc->bif.lfcap;
 		SYSCTL_OUT(req, &warning, sizeof(warning));
 	}
 	return 0;
