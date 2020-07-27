@@ -97,7 +97,6 @@ static void		acpi_cmbat_init_battery(void *arg);
 
 static void		acpi_cmbat_sysctls(device_t);
 static int 		acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS);
-static int		acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS);
 
 static device_method_t acpi_cmbat_methods[] = {
     /* Device interface */
@@ -558,43 +557,34 @@ acpi_cmbat_init_battery(void *arg)
 static void acpi_cmbat_sysctls( device_t dev) {
 
 		struct acpi_cmbat_softc *sc = device_get_softc(dev);
-		
 		int battery_unit = device_get_unit(dev);
 		char unit[10];
 		sprintf(unit, "%i", battery_unit);
-		
-		struct sysctl_oid *cmbat_tree =SYSCTL_ADD_NODE(NULL, SYSCTL_STATIC_CHILDREN(_dev), OID_AUTO, "cmbat", CTLFLAG_RW, 0, "Control Method Batteries");
+
+		/* new nodes */
+		struct sysctl_oid *cmbat_tree =SYSCTL_ADD_NODE(NULL, SYSCTL_STATIC_CHILDREN(_dev), OID_AUTO, "cmbat", CTLFLAG_RW, 0, "Control Method Batteries");		
 		struct sysctl_oid *cmbat_oid = SYSCTL_ADD_NODE(NULL, SYSCTL_CHILDREN(cmbat_tree), OID_AUTO, unit, CTLFLAG_RW, 0, "unit number");
 
 		
 		if(sc->acpi_btp_exists) {
-			SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Any", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_btp_sysctl, "I" ,"battery level warning");
+			SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "BatteryWarningLevel", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_btp_sysctl, "I" ,"battery level warning");
 		}
-		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Low", CTLTYPE_INT | CTLFLAG_RD, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"design low battery warning");
-		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "CriticallyLow", CTLTYPE_INT | CTLFLAG_RD, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"design critically low battery warning");
-
+		int warning = 100 * sc->bif.lcap / sc->bif.lfcap; 
+		SYSCTL_ADD_INT(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "BatteryWarningLow", CTLFLAG_RD, NULL, warning, "design low battery warning");
+		warning = 100 *sc->bif.wcap / sc->bif.lfcap;
+		SYSCTL_ADD_INT(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "BatteryWarningCritical", CTLFLAG_RD, NULL, warning, "design critically low battery warning");
 }
 
 static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 	
-	device_t dev;	
-	ACPI_HANDLE h;
-	ACPI_STATUS as;
-	
-	struct acpi_cmbat_softc *sc;
-	
-	/* find "our" battery */
 	struct sysctl_oid *parent = SYSCTL_PARENT(oidp);
-	if(!parent)
-		return(1);
 	long battery_index = strtol(parent->oid_name, NULL, 0);
 	
-	dev = devclass_get_device( acpi_cmbat_devclass, (int) battery_index);
-	if(!dev)
-		return(1);
-	sc = device_get_softc(dev);
-	h = acpi_get_handle(dev);
-	
+	device_t dev = devclass_get_device( acpi_cmbat_devclass, (int) battery_index);
+	ACPI_HANDLE h = acpi_get_handle(dev);
+	ACPI_STATUS as;	
+	struct acpi_cmbat_softc *sc = device_get_softc(dev);
+
 	if(req->newptr) {
 		/* write request */
 		SYSCTL_IN(req, &sc->battery_warning_level, sizeof(sc->battery_warning_level));
@@ -602,13 +592,8 @@ static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 		if(sc->battery_warning_level < 1 || sc->battery_warning_level > 99)
 			sc->battery_warning_level = 20; /* correct bogus writes */
 		
-
-		double newtp = sc->bif.lfcap;
-		newtp = newtp * (sc->battery_warning_level);
-		newtp = newtp / 100;
-		
-		ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev), "btw: bif.lfcap=%i, bif.lcap=%i, wcap=%i, gra1=%i, gra2=%i, newtp=%i\n", sc->bif.lfcap, sc->bif.lcap, sc->bif.wcap, sc->bif.gra1, sc->bif.gra2, (int) newtp);
-		as = acpi_SetInteger(h, "_BTP", (int) newtp);
+		int newtp = sc->bif.lfcap * sc->battery_warning_level / 100;
+		as = acpi_SetInteger(h, "_BTP", newtp);
     
 		if (ACPI_FAILURE(as))
 			ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev), "error setting _BTP -- %s\n", AcpiFormatException(as));
@@ -616,33 +601,5 @@ static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 	else /* read request */
 		SYSCTL_OUT(req, &sc->battery_warning_level, sizeof(sc->battery_warning_level));
 
-	return 0;
-}
-
-static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
-
-	device_t dev;	
-	ACPI_HANDLE h;
-	struct acpi_cmbat_softc *sc;
-	
-	/* find "our" battery */
-	struct sysctl_oid *parent = SYSCTL_PARENT(oidp);
-	
-	long battery_index = strtol(parent->oid_name, NULL, 0);
-	
-	dev = devclass_get_device( acpi_cmbat_devclass, (int) battery_index);
-	sc = device_get_softc(dev);
-	h = acpi_get_handle(dev);
-	
-	/* output information */
-	int warning=0;
-	if(strncmp(oidp->oid_name, "Low", 3) == 0 )
-		warning = sc->bif.wcap;
-	else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
-		warning = sc->bif.lcap;
-
-	warning = (double) warning *100 / sc->bif.lfcap;
-	
-	SYSCTL_OUT(req, &warning, sizeof(warning));
 	return 0;
 }
