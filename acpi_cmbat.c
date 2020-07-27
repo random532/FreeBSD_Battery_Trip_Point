@@ -470,7 +470,7 @@ acpi_cmbat_btp_exists(void *arg) {
 		sc->acpi_btp_exists = FALSE;
 		
 	else if (ACPI_FAILURE(as)) {
-	printf( "error setting _BTP\n");
+	ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev), "error setting _BTP --%s\n", AcpiFormatException(as));
 	sc->acpi_btp_exists = FALSE;
     }
     else 
@@ -560,19 +560,19 @@ static void acpi_cmbat_sysctls( device_t dev) {
 		struct acpi_cmbat_softc *sc = device_get_softc(dev);
 		
 		int battery_unit = device_get_unit(dev);
-		char *unit = malloc(10, M_ACPICMBAT, M_WAITOK);
+		char unit[10];
 		sprintf(unit, "%i", battery_unit);
 		
 		struct sysctl_oid *cmbat_tree =SYSCTL_ADD_NODE(NULL, SYSCTL_STATIC_CHILDREN(_dev), OID_AUTO, "cmbat", CTLFLAG_RW, 0, "Control Method Batteries");
 		struct sysctl_oid *cmbat_oid = SYSCTL_ADD_NODE(NULL, SYSCTL_CHILDREN(cmbat_tree), OID_AUTO, unit, CTLFLAG_RW, 0, "unit number");
 
+		
 		if(sc->acpi_btp_exists) {
 			SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Any", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_btp_sysctl, "I" ,"battery level warning");
 		}
-		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Low", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"low battery warning");
-		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "CriticallyLow", CTLTYPE_INT | CTLFLAG_RW, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"critically low battery warning");
+		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "Low", CTLTYPE_INT | CTLFLAG_RD, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"design low battery warning");
+		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO, "CriticallyLow", CTLTYPE_INT | CTLFLAG_RD, 0, 0, acpi_cmbat_bif_warning_sysctl, "I" ,"design critically low battery warning");
 
-		//free(unit);
 }
 
 static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
@@ -607,11 +607,11 @@ static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 		newtp = newtp * (sc->battery_warning_level);
 		newtp = newtp / 100;
 		
-		printf("oh.. btw: bif.lfcap=%i, bif.lcap=%i, wcap=%i, gra1=%i, gra2=%i, newtp=%i\n", sc->bif.lfcap, sc->bif.lcap, sc->bif.wcap, sc->bif.gra1, sc->bif.gra2, (int) newtp);
+		ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev), "btw: bif.lfcap=%i, bif.lcap=%i, wcap=%i, gra1=%i, gra2=%i, newtp=%i\n", sc->bif.lfcap, sc->bif.lcap, sc->bif.wcap, sc->bif.gra1, sc->bif.gra2, (int) newtp);
 		as = acpi_SetInteger(h, "_BTP", (int) newtp);
     
 		if (ACPI_FAILURE(as))
-			printf( "error setting _BTP\n");
+			ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev), "error setting _BTP -- %s\n", AcpiFormatException(as));
 	}
 	else /* read request */
 		SYSCTL_OUT(req, &sc->battery_warning_level, sizeof(sc->battery_warning_level));
@@ -623,7 +623,6 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 
 	device_t dev;	
 	ACPI_HANDLE h;
-	
 	struct acpi_cmbat_softc *sc;
 	
 	/* find "our" battery */
@@ -635,33 +634,15 @@ static int acpi_cmbat_bif_warning_sysctl(SYSCTL_HANDLER_ARGS) {
 	sc = device_get_softc(dev);
 	h = acpi_get_handle(dev);
 	
-	int warning=5; /* default warning level */
-		
-	if(req->newptr) {
-		/* write request */
-		SYSCTL_IN(req, &warning, sizeof(warning));
-		
-		if(warning < 1 || warning > 100)
-			warning = 5; 
-			
-		warning = warning * sc->bif.lfcap /100;
-		device_printf(dev, "setting -->%s to %i\n", oidp->oid_name, warning);
-		
-		if(strncmp(oidp->oid_name, "Low", 3) == 0 )
-			sc->bif.wcap = warning;
-		else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
-			sc->bif.lcap = warning;
-	}
-	else /* read request */ {
-		if(strncmp(oidp->oid_name, "Low", 3) == 0 )
+	/* output information */
+	int warning=0;
+	if(strncmp(oidp->oid_name, "Low", 3) == 0 )
 		warning = sc->bif.wcap;
-		else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
-			warning = sc->bif.lcap;
+	else if(strncmp(oidp->oid_name, "CriticallyLow", 13) == 0 )
+		warning = sc->bif.lcap;
+
+	warning = (double) warning *100 / sc->bif.lfcap;
 	
-		if(!warning)
-			warning = 5;
-		warning = (double) warning *100 / sc->bif.lfcap;
-		SYSCTL_OUT(req, &warning, sizeof(warning));
-	}
+	SYSCTL_OUT(req, &warning, sizeof(warning));
 	return 0;
 }
