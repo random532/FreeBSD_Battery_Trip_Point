@@ -1,13 +1,9 @@
 # patch_cmbat.c
-Battery warning level for FreeBSD control method batteries (_BTP)- highly experimental :-)
-
-
-The patch applies to the file (/usr/src/)sys/dev/acpica/acpi_cmbat.c<br>
-Up to three new sysctls:<br> 
-dev.cmbat.0.BatteryWarningAny  (read-write)<br>
-dev.cmbat.0.BatteryWarningLow  (read-only)<br>
-dev.cmbat.0.BatteryWarningCritical  (read-only)<br>
+Battery warning level for FreeBSD control method batteries (_BTP) :-)
 <br>
-It probably crashes if you have more than one battery.
+The patch applies to the file (/usr/src/)sys/dev/acpica/acpi_cmbat.c<br>
+If supported by the battery, a new sysctls will be created:<br> 
+dev.Battery.X.Warning_Level<br>
+<br>
 
-Catch the warnings via devd "CMBAT" notifications.<br>
+devd will be notified via system "ACPI" subsystem "CMBAT" events.<br>
