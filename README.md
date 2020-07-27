@@ -1,5 +1,6 @@
 # patch_cmbat.c
-This adds battery warning levels to FreeBSD control method batteries - highly experimental :-)
+Battery warning level for FreeBSD control method batteries (_BTP)- highly experimental :-)
+
 
 The patch applies to the file (/usr/src/)sys/dev/acpica/acpi_cmbat.c<br>
 Up to three new sysctls:<br> 
