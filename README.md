@@ -1,4 +1,4 @@
-# Battery Warnings
+# FreeBSD Battery Warnings
 <br>
 
 Affected file:<br>
