@@ -2,7 +2,7 @@
 <br>
 
 Affected file:<br>
-sys/dev/acpica/acpi_cmbat.c<br>
+sys/dev/acpica/acpi_cmbat.c in 12.1 base<br>
 <br>
 Description:<br>
 If supported by the battery (_BTP), a new sysctl is created:<br> 
