@@ -539,7 +539,7 @@ acpi_cmbat_btp(void *arg) {
     ACPI_STATUS as;
     ACPI_HANDLE h;
     device_t dev;
-    uin32_t	newtp;
+    uin32_t newtp;
 
     ACPI_SERIAL_ASSERT(cmbat);
 
@@ -554,7 +554,7 @@ acpi_cmbat_btp(void *arg) {
      */     
 
     sc->btp_warning_level= ACPI_BATTERY_BTP_WARNING_LEVEL;
-    newtp = double(sc->bix.lfcap) / 100 * sc->btp_warning_level;
+    newtp = (double) sc->bix.lfcap / 100 * sc->btp_warning_level;
     as = acpi_SetInteger(h, "_BTP", newtp);
 
     if(as == AE_NOT_FOUND)
@@ -577,10 +577,12 @@ static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 	
     struct sysctl_oid *parent;
     struct acpi_cmbat_softc *sc;
-    long battery_index;
     device_t dev;
     ACPI_HANDLE h;
-    ACPI_STATUS as;	
+    ACPI_STATUS as;
+
+    long battery_index;
+    uint32_t newtp;
 
     ACPI_SERIAL_BEGIN(cmbat);
 
@@ -599,7 +601,7 @@ static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
 	if(sc->btp_warning_level < 1 || sc->btp_warning_level > 99)
 		sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
 
-	uint32_t newtp = (double) sc->bix.lfcap /100 * sc->battery_warning_level;
+	newtp = (double) sc->bix.lfcap /100 * sc->battery_warning_level;
 	as = acpi_SetInteger(h, "_BTP", newtp);
 
 	if(ACPI_FAILURE(as))
@@ -669,7 +671,7 @@ acpi_cmbat_init_battery(void *arg)
 	    acpi_battery_bix_valid(&sc->bix);
 	
 	if(valid)
-	acpi_cmbat_btp(dev);
+	    acpi_cmbat_btp(dev);
 	
 	ACPI_SERIAL_END(cmbat);
 
