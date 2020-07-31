@@ -73,8 +73,8 @@ struct acpi_cmbat_softc {
     struct acpi_bst bst;
     struct timespec bst_lastupdated;
     
-    bool acpi_btp_exists;
-    int btp_warning_level;
+    bool            acpi_btp_exists;
+    int             btp_warning_level;
 };
 
 ACPI_SERIAL_DECL(cmbat, "ACPI cmbat");
@@ -536,9 +536,9 @@ static void
 acpi_cmbat_btp(void *arg) {
 
     struct acpi_cmbat_softc *sc;
-    ACPI_STATUS as;
-    ACPI_HANDLE h;
     device_t dev;
+    ACPI_HANDLE h;
+    ACPI_STATUS as;
     uin32_t newtp;
 
     ACPI_SERIAL_ASSERT(cmbat);
