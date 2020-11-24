@@ -2,7 +2,7 @@
 <br>
 
 In file:<br>
-sys/dev/acpica/acpi_cmbat.c  (13 Current)<br>
+sys/dev/acpica/acpi_cmbat.c<br>
 <br>
 Description:<br>
 If supported by the battery (_BTP), a new sysctl is created, dev.battery.0.Warning_Level<br>
