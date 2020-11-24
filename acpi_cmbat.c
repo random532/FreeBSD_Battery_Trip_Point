@@ -36,7 +36,6 @@ __FBSDID("$FreeBSD: head/sys/dev/acpica/acpi_cmbat.c 358395 2020-02-27 17:13:57Z
 #include <sys/module.h>
 #include <sys/bus.h>
 #include <sys/ioccom.h>
-#include <sys/sysctl.h>
 
 #include <machine/bus.h>
 #include <sys/rman.h>
@@ -71,9 +70,9 @@ struct acpi_cmbat_softc {
 
     struct acpi_bix bix;
     struct acpi_bst bst;
-    struct timespec bst_lastupdated;    
-    bool            acpi_btp_exists;
-    int             btp_warning_level;
+    struct timespec bst_lastupdated;
+    BOOLEAN	acpi_btp_exists;
+    int btp_warning_level;
 };
 
 ACPI_SERIAL_DECL(cmbat, "ACPI cmbat");
@@ -91,7 +90,7 @@ static void		acpi_cmbat_get_bix_task(void *arg);
 static void		acpi_cmbat_get_bix(void *arg);
 static int		acpi_cmbat_bst(device_t, struct acpi_bst *);
 static int		acpi_cmbat_bix(device_t, void *, size_t);
-static void		acpi_cmbat_btp(void *);
+static void		acpi_cmbat_btp_set(void *, int);
 static int 		acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS);
 static void		acpi_cmbat_init_battery(void *arg);
 
@@ -152,6 +151,17 @@ acpi_cmbat_attach(device_t dev)
 	return (error);
     }
 
+    ACPI_SERIAL_BEGIN(cmbat);
+    sc->acpi_btp_exists = acpi_HasMethod(handle, "_BTP");
+    if(sc->acpi_btp_exists) {
+    	sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
+	struct sysctl_oid *cmbat_oid = device_get_sysctl_tree(dev);
+	SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO,
+		"warning_level", CTLTYPE_INT | CTLFLAG_RW, 0, 0,
+		acpi_cmbat_btp_sysctl, "I" ,"battery warning level");
+    }
+    ACPI_SERIAL_END(cmbat);
+
     /*
      * Install a system notify handler in addition to the device notify.
      * Toshiba notebook uses this alternate notify for its battery.
@@ -206,12 +216,11 @@ acpi_cmbat_notify_handler(ACPI_HANDLE h, UINT32 notify, void *context)
     case ACPI_NOTIFY_DEVICE_CHECK:
     case ACPI_BATTERY_BST_CHANGE:
 	/*
-	 * .........safdsafsafda
-	 * Clear the last updated time. 
+	 * Clear the last updated time.  The next call to retrieve the
+	 * battery status will get the new value for us.
 	 */
 	timespecclear(&sc->bst_lastupdated);
 	break;
-
     case ACPI_NOTIFY_BUS_CHECK:
     case ACPI_BATTERY_BIX_CHANGE:
 	/*
@@ -323,25 +332,8 @@ static void
 acpi_cmbat_get_bix_task(void *arg)
 {
 
-	/*
-	 * _BIX has changed. We update it, and reset
-	 * the battery warning if the battery was unplugged.
-	 */
- 
-    struct acpi_cmbat_softc *sc;
-    device_t dev;
-
     ACPI_SERIAL_BEGIN(cmbat);
-    dev = arg;
-    sc = device_get_softc(dev);
-
-    acpi_cmbat_get_bix(dev);
-
-    if(sc->acpi_btp_exists == TRUE && !acpi_BatteryIsPresent(dev) ) {
-		sc->btp_warning_level = 0;
-		ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev), \
-		"resetting _BTP\n");
-    }
+    acpi_cmbat_get_bix(arg);
     ACPI_SERIAL_END(cmbat);
 }
 
@@ -550,73 +542,42 @@ acpi_cmbat_bst(device_t dev, struct acpi_bst *bst)
 }
 
 static void
-acpi_cmbat_btp(void *arg)
+acpi_cmbat_btp_set(void *arg, int warning)
 {
 
     struct acpi_cmbat_softc *sc;
     device_t dev;
     ACPI_HANDLE h;
-    ACPI_HANDLE tmp;
     ACPI_STATUS as;
     uint64_t newtp;
 
-    ACPI_SERIAL_BEGIN(cmbat);
-
+    ACPI_SERIAL_ASSERT(cmbat);
     dev = arg;
     sc = device_get_softc(dev);
     h = acpi_get_handle(dev);
 
-    /* Check for _BTP */
+	newtp = sc->bix.lfcap * warning / 100;
+	as = acpi_SetInteger(h, "_BTP", (uint32_t) newtp);
 
-	as = acpi_GetHandleInScope(h, "_BTP", &tmp);
-	if(ACPI_FAILURE(as)) {
-		sc->acpi_btp_exists = FALSE;
-		ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev), \
-   		"_BTP not found--%s\n", AcpiFormatException(as));
-    	ACPI_SERIAL_END(cmbat);
-    	return;
+	if (ACPI_FAILURE(as)) {
+		ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev),
+		"error setting _BTP --%s\n", AcpiFormatException(as));
+		sc->btp_warning_level = 0;
 	}
 	else
-    	sc->acpi_btp_exists = TRUE;
-
-	/* 
-	 * If the battery is plugged in,
-	 * set a default warning level.
-	 */
-
-    if(acpi_BatteryIsPresent(dev)) {
-    	sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
-    	newtp = sc->bix.lfcap * sc->btp_warning_level / 100;
-    	as = acpi_SetInteger(h, "_BTP", (uint32_t) newtp);
-
-    	if (ACPI_FAILURE(as)) {
-    		ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev),
-    		"error setting _BTP --%s\n", AcpiFormatException(as));
-    		sc->btp_warning_level = 0;
-    	}
-    }
-	else
-		sc->btp_warning_level = 0;
-
-	/* Add a sysctl */
-	struct sysctl_oid *cmbat_oid = device_get_sysctl_tree(dev);
-	SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO,
-		"warning_level", CTLTYPE_INT | CTLFLAG_RW, 0, 0,
-		acpi_cmbat_btp_sysctl, "I" ,"battery warning level");
-
-    ACPI_SERIAL_END(cmbat);
+		sc->btp_warning_level = warning;
 }
 
-static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
-	
+static int
+acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS)
+{
+
     struct sysctl_oid *parent;
     struct acpi_cmbat_softc *sc;
     device_t dev;
     ACPI_HANDLE h;
-    ACPI_STATUS as;
-
     long battery_index;
-    uint64_t newtp;
+
 
     ACPI_SERIAL_BEGIN(cmbat);
 
@@ -628,28 +589,26 @@ static int acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS) {
     sc = device_get_softc(dev);
 
     if(req->newptr && acpi_BatteryIsPresent(dev)) {
+	/* Write request */
+
+	SYSCTL_IN(req, &sc->btp_warning_level, sizeof(sc->btp_warning_level));
+	/* correct bogus writes */
+	if(sc->btp_warning_level < 0 || sc->btp_warning_level > 100)
+		sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
+
+	acpi_cmbat_btp_set(dev, sc->btp_warning_level);
+    }
+
+	else if(req->newptr) /* write request w/o battery */
+		sc->btp_warning_level = 0;
 		
-		/* Write request */
-		SYSCTL_IN(req, &sc->btp_warning_level, sizeof(sc->btp_warning_level));
-
-    	/* correct bogus writes */
-    	if(sc->btp_warning_level < 0 || sc->btp_warning_level > 100)
-    		sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
-
-    	newtp = sc->bix.lfcap * sc->btp_warning_level / 100;
-    	as = acpi_SetInteger(h, "_BTP", (uint32_t) newtp);
-
-		if(ACPI_FAILURE(as))
-			ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev),
-			"error setting _BTP -- %s\n", AcpiFormatException(as));
-	}
-
-    else if(req->newptr == NULL) /* read request */
-    	SYSCTL_OUT(req, &sc->btp_warning_level, sizeof(sc->btp_warning_level));
+    else /* read request */
+	SYSCTL_OUT(req, &sc->btp_warning_level, sizeof(sc->btp_warning_level));
 
     ACPI_SERIAL_END(cmbat);
     return (0);
 }
+
 
 static void
 acpi_cmbat_init_battery(void *arg)
@@ -704,7 +663,13 @@ acpi_cmbat_init_battery(void *arg)
 
 	valid = acpi_battery_bst_valid(&sc->bst) &&
 	    acpi_battery_bix_valid(&sc->bix);
-	
+
+	/* set battery warning level */
+	if(valid)
+    		acpi_cmbat_btp_set(dev, sc->btp_warning_level);
+	else
+		sc->btp_warning_level = 0;
+
 	ACPI_SERIAL_END(cmbat);
 
 	if (valid)
@@ -718,7 +683,4 @@ acpi_cmbat_init_battery(void *arg)
 	ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev),
 	    "battery initialization done, tried %d times\n", retry + 1);
     }
-
-    /* Optional tables */
-    acpi_cmbat_btp(dev);
 }
