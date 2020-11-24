@@ -10,3 +10,11 @@ You can set the warning level with this sysctl.
 Once the battery reaches that level, devd will be notified via system "ACPI" subsystem "CMBAT" events.<br>
 
 Your battery supports this if the command "acpidump -dt |grep _BTP" returns something (an acpi method).
+
+A devd entry might look like this:
+notify 10 {
+	match "system" "ACPI";
+	match "subsystem" "CMBAT";
+	action "/home/myuser/myscript.sh $notify";
+};
+
