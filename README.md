@@ -1,7 +1,7 @@
 # FreeBSD Battery Warnings
 <br>
 
-In file:<br>
+In the kernel source file:<br>
 sys/dev/acpica/acpi_cmbat.c<br>
 <br>
 Description:<br>
@@ -11,7 +11,7 @@ Once the battery reaches that level, devd will be notified via system "ACPI" sub
 
 Your battery supports this if the command "acpidump -dt |grep _BTP" returns something (an acpi method).<br><br>
 
-A devd entry might look like this:<br>
+A /etc/devd.conf entry might look like this:<br>
 notify 10 {<br>
 	match "system" "ACPI";<br>
 	match "subsystem" "CMBAT";<br>
