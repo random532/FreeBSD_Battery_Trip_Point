@@ -125,10 +125,10 @@ acpi_cmbat_probe(device_t dev)
     int rv;
 
     if (acpi_disabled("cmbat"))
-		return (ENXIO);
+    	return (ENXIO);
     rv = ACPI_ID_PROBE(device_get_parent(dev), dev, cmbat_ids, NULL);
     if(rv <= 0)
-		device_set_desc(dev, "ACPI Control Method Battery");
+    	device_set_desc(dev, "ACPI Control Method Battery");
     return (rv);
 }
 
@@ -152,23 +152,21 @@ acpi_cmbat_attach(device_t dev)
 	return (error);
     }
 
-
      /* A potential battery warning level sysctl. */
 
     ACPI_SERIAL_BEGIN(cmbat);
     if(ACPI_SUCCESS(acpi_GetHandleInScope(handle, "_BTP", &tmp))) {
-        
-        device_printf(dev, "has battery warning level.\n");
+
 		sc->acpi_btp_exists = TRUE;
-    	sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
-    	
+		sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
+	
 		struct sysctl_oid *cmbat_oid = device_get_sysctl_tree(dev);
 		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO,
 		"warning_level", CTLTYPE_INT | CTLFLAG_RW, 0, 0,
 		acpi_cmbat_btp_sysctl, "I" ,"battery warning level");
     }
-	else
-		sc->acpi_btp_exists = FALSE;
+    else
+    	sc->acpi_btp_exists = FALSE;
     ACPI_SERIAL_END(cmbat);
 
     /*
@@ -674,7 +672,7 @@ acpi_cmbat_init_battery(void *arg)
 	    acpi_battery_bix_valid(&sc->bix);
 
 	/* set battery warning level */
-	if(valid)
+	if(valid && sc->acpi_btp_exists)
     		acpi_cmbat_btp_set(dev, sc->btp_warning_level);
 	else
 		sc->btp_warning_level = 0;
