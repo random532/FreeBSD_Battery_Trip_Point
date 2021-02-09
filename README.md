@@ -7,7 +7,7 @@ sys/dev/acpica/acpi_cmbat.c<br>
 <br>
 Short description:<br>
 Get notified if your battery reaches a user-defined percentage.<br>
-
+<br>
 Long description:<br>
 There is no need to run a daemon that regularly checks the battery level.<br>
 Just tell the battery controller your desired warning level via the optional acpi method _BTP. <br>
