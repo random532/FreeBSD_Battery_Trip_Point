@@ -27,3 +27,6 @@ notify 10 {<br>
 	action "/home/myuser/myscript.sh $notify";<br>
 };<br>
 
+
+Personal note: Please notify me if I need to look at this again.<br>
+For example, if it no longer compiles. Thanks. :-)
