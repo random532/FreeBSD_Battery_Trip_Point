@@ -1,6 +1,6 @@
 # FreeBSD Battery Warnings
 <br>
-THIS NEEDS AN UPDATE FOR CURRENT FREEBSD VERSION!
+Hint: This code needs to be updated to current FreeBSD versions!
 
 Affected file:<br>
 sys/dev/acpica/acpi_cmbat.c<br>
