@@ -1,33 +1,36 @@
 # FreeBSD Battery Warnings
-<br>
-Hint: This code needs to be updated to current FreeBSD versions!
 
 Affected file:<br>
 sys/dev/acpica/acpi_cmbat.c<br>
 
 <br>
-Short description:<br>
-Get notified if your battery reaches a user-defined percentage.<br>
+__Short description:__<br>
+You don't need to poll the battery periodically.<br>
+You can set a percentage (ranging from 0-100) via sysctl.<br>
+This causes a /dev/devd event Notify(0x80). So a script can be triggered.<br>
 <br>
-Long description:<br>
-There is no need to run a daemon that regularly checks the battery level.<br>
-Just tell the battery controller your desired warning level via the optional acpi method _BTP. <br>
 
-Your battery supports this if the command "acpidump -dt |grep _BTP" returns something (an acpi method).<br><br>
-
+__Long description:__<br>
+ACPI specification defines an optional acpi method called "_BTP". <br>
 Currently the FreeBSD cmbat driver only supports mandatory methods (bif, bix, ..), but no optional ones.<br>
 
-If supported by the battery, a new sysctl is created, dev.battery.0.Warning_Level<br>
-You can set the warning level with this sysctl (values between 0-100).
-Once the battery reaches that level, devd will be notified via system "ACPI" subsystem "CMBAT" events.<br>
+Try the command: "acpidump -dt |grep _BTP" 
+If it returns something, your battery supports this function.<br><br>
 
-A /etc/devd.conf entry might look like this:<br>
+If supported by the battery, a new sysctl is created: dev.battery.X.Warning_Level<br>
+Replace the X with your battery index (0, 1, ...). <br>
+
+You can set the warning level ("trip point") with this sysctl (values between 0-100 are allowed).<br>
+If the battery reaches that percentage, devd will be notified.<br>
+
+Add an entry in /etc/devd.conf:<br>
 notify 10 {<br>
 	match "system" "ACPI";<br>
 	match "subsystem" "CMBAT";<br>
 	action "/home/myuser/myscript.sh $notify";<br>
 };<br>
 
-<br>
-Personal note: Please write me if I need to look at this again.<br>
-For example, if it no longer compiles. Thanks. :-)
+Replace myuser with your local user. Replace myscript.sh with a script of your choice.<br>
+
+Personal note: If you have any questions, please write me. I will look at this again.<br>
+ Thanks. :-)
