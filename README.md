@@ -4,6 +4,7 @@ Affected file:<br>
 sys/dev/acpica/acpi_cmbat.c<br>
 
 <br>
+
 __Short description:__<br>
 You don't need to poll the battery periodically.<br>
 You can set a percentage (ranging from 0-100) via sysctl.<br>
