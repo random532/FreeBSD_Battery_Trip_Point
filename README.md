@@ -61,4 +61,4 @@ Step 5:
 Replace mysuser and myscript with an actual user and an actual script.<br>
 
 Step 6:
-Set the sysctl dev.battery to your desired warning level. If it works, give me feedback.<br>
+Set the sysctl dev.battery.0.Warning_Level to your desired warning level. If it works, give me feedback.<br>
