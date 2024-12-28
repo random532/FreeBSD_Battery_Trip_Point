@@ -1,0 +1,113 @@
+diff --git a/sys/dev/acpica/acpi_cmbat.c b/sys/dev/acpica/acpi_cmbat.c
+old mode 100644
+new mode 100755
+index 35032244af19..06f0d235cacc
+--- a/sys/dev/acpica/acpi_cmbat.c
++++ b/sys/dev/acpica/acpi_cmbat.c
+@@ -60,6 +60,7 @@ ACPI_MODULE_NAME("BATTERY")
+ #define	ACPI_BATTERY_BST_CHANGE	0x80
+ #define	ACPI_BATTERY_BIF_CHANGE	0x81
+ #define	ACPI_BATTERY_BIX_CHANGE	ACPI_BATTERY_BIF_CHANGE
++#define ACPI_BATTERY_BTP_WARNING_LEVEL 20
+ 
+ struct acpi_cmbat_softc {
+     device_t	    dev;
+@@ -68,6 +69,7 @@ struct acpi_cmbat_softc {
+     struct acpi_bix bix;
+     struct acpi_bst bst;
+     struct timespec bst_lastupdated;
++    int btp_warning_level;
+ };
+ 
+ ACPI_SERIAL_DECL(cmbat, "ACPI cmbat");
+@@ -86,6 +88,8 @@ static void		acpi_cmbat_get_bix(void *arg);
+ static int		acpi_cmbat_bst(device_t, struct acpi_bst *);
+ static int		acpi_cmbat_bix(device_t, void *, size_t);
+ static void		acpi_cmbat_init_battery(void *arg);
++static void		acpi_cmbat_initialize_btp(device_t);
++static int 		acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS);
+ 
+ static device_method_t acpi_cmbat_methods[] = {
+     /* Device interface */
+@@ -137,6 +141,9 @@ acpi_cmbat_attach(device_t dev)
+ 
+     timespecclear(&sc->bst_lastupdated);
+ 
++    /* The battery is registered. Check for optional methods. */
++    acpi_cmbat_initialize_btp(dev);
++	
+     error = acpi_battery_register(dev);
+     if (error != 0) {
+     	device_printf(dev, "registering battery failed\n");
+@@ -598,3 +605,70 @@ acpi_cmbat_init_battery(void *arg)
+ 	    "battery initialization done, tried %d times\n", retry + 1);
+     }
+ }
++
++static void acpi_cmbat_initialize_btp(device_t dev)
++{
++	struct acpi_cmbat_softc *sc;   
++	ACPI_HANDLE tmp;
++
++	sc = device_get_softc(dev);
++
++	ACPI_SERIAL_BEGIN(cmbat);
++
++	/* If the battery supports _BTP, create a sysctl for it. */
++	if(ACPI_SUCCESS(acpi_GetHandleInScope(acpi_get_handle(dev), "_BTP", &tmp)))
++	{
++		sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
++	
++		struct sysctl_oid *cmbat_oid = device_get_sysctl_tree(dev);
++		SYSCTL_ADD_PROC(NULL, SYSCTL_CHILDREN(cmbat_oid), OID_AUTO,
++		"warning_level", CTLTYPE_INT | CTLFLAG_RW, dev, 0,
++		acpi_cmbat_btp_sysctl, "I" ,"battery warning level");
++	}
++	
++	ACPI_SERIAL_END(cmbat);
++}
++
++static int
++acpi_cmbat_btp_sysctl(SYSCTL_HANDLER_ARGS)
++{
++	device_t dev;
++	struct acpi_cmbat_softc *sc;
++	ACPI_STATUS as;
++	uint64_t newtp;	/* New trip point, either in mA or mW. */
++
++	dev = (device_t) oidp->oid_arg1;
++	sc = device_get_softc(dev);
++
++	ACPI_SERIAL_BEGIN(cmbat);
++
++	if(req->newptr && acpi_BatteryIsPresent(dev)) {
++	/* Write request. */
++
++		SYSCTL_IN(req, &sc->btp_warning_level, sizeof(sc->btp_warning_level));
++		
++		/* Correct bogus writes. */
++		if(sc->btp_warning_level < 0 || sc->btp_warning_level > 100)
++			sc->btp_warning_level = ACPI_BATTERY_BTP_WARNING_LEVEL;
++	
++		/* Call _BTP method */
++		newtp = sc->bix.lfcap * sc->btp_warning_level / 100;
++		as = acpi_SetInteger(acpi_get_handle(dev), "_BTP", (uint32_t) newtp);
++		
++		/* Error checking. */
++		if (ACPI_FAILURE(as)) {
++			ACPI_VPRINT(dev, acpi_device_get_parent_softc(dev),
++			"error setting _BTP --%s\n", AcpiFormatException(as));
++			 sc->btp_warning_level = 0;
++		}
++    }
++
++	else if(req->newptr) /* Write request w/o battery. */
++		sc->btp_warning_level = 0;
++
++	else /* Read request. */
++		SYSCTL_OUT(req, &sc->btp_warning_level, sizeof(sc->btp_warning_level));
++
++	ACPI_SERIAL_END(cmbat);
++	return (0);
++}
+\ No newline at end of file
