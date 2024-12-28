@@ -7,8 +7,8 @@ sys/dev/acpica/acpi_cmbat.c<br>
 
 __Short description:__<br>
 You don't need to poll the battery periodically.<br>
-You can set a percentage (ranging from 0-100) via sysctl.<br>
-This causes a /dev/devd event Notify(0x80). So a script can be triggered.<br>
+You can set a percentage level for your battery (ranging from 0-100) via sysctl.<br>
+If the level is reached, it will cause a /dev/devd event Notify(0x80). So a script can be triggered.<br>
 <br>
 
 __Long description: A New Battery Warning Level__<br>
